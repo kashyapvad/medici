@@ -1,0 +1,50 @@
+# Ignore local env vars
+.env
+
+# Ignore bundler config.
+/.bundle
+
+coverage/
+coverage_vulnerabilities/
+scratch/
+z-notes/
+z_db_backups/
+
+# Ignore all logfiles and tempfiles.
+*/tmp/*
+*/log/*
+/tmp
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# But keep the folders
+!/log/.keep
+!/tmp/.keep
+*.keep
+
+#IDE Files
+/.idea
+/.vscode
+
+# Dependency directories
+node_modules/
+
+public/assets
+*/public/packs/*
+.byebug_history
+
+
+# Ignore master key for decrypting credentials and more.
+config/master.key
+public/packs
+public/packs-test
+.yarn-integrity
+
+vue/dist
+dump.*
+dump-*
+
+.DS_Store
