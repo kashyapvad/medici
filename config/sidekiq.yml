@@ -1,0 +1,32 @@
+# Sample configuration file for Sidekiq.
+# Options here can still be overridden by cmd line args.
+# Place this file at config/sidekiq.yml and Sidekiq will
+# pick it up automatically.
+---
+:verbose: false
+:concurrency: <%= (ENV["SIDEKIQ_CONCURRENCY"] || 5).to_i %>
+
+# Set timeout to 8 on Heroku, longer if you manage your own systems.
+:timeout: <%= (ENV["SIDEKIQ_TIMEOUT"] || 8).to_i %>
+
+# Sidekiq will run this file through ERB when reading it so you can
+# even put in dynamic logic, like a host-specific queue.
+# http://www.mikeperham.com/2013/11/13/advanced-sidekiq-host-specific-queues/
+:queues:
+  - [orders, 100]
+  - [critical, 80]
+  - [member_request, 70]
+  - [member_notifications, 60]
+  - [memoize, 20]
+  - [default, 10]
+  - [marketing_automation, 8]
+  - [data_processing, 8]
+  - [low, 5]
+  - [lower, 4]
+  - [poi, 1]
+
+# you can override concurrency based on environment
+# production:
+#   :concurrency: 25
+# staging
+#   :concurrency: 15

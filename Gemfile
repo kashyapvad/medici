@@ -31,6 +31,11 @@ gem "redis", ">= 4.0.1"
 
 gem "httparty", "~> 0.22.0"
 gem 'pg', '~> 1.5.6'
+gem 'sidekiq', '~> 7.3.0'
+gem 'alpaca-trade-api', '~> 0.8.0'
+gem 'websocket-eventmachine-client', '~> 1.3.0'
+gem 'msgpack', '~> 1.7.2'
+gem 'technical-analysis', '~> 0.2.4'
 
 # Use Kredis to get higher-level data types in Redis [https://github.com/rails/kredis]
 # gem "kredis"
