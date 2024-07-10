@@ -123,25 +123,25 @@ class AlpacaService
       limit: opts[:limit],
       start: opts[:start]
     }
-    respose = get(ENV['HISTORICAL_BARS_OPTIONS_URL'], headers: @headers, query: query)['bars'][symbol]
-    respose.map{|d| {date_time: d["t"], value: d["c"]}}
+    respose = get(ENV['HISTORICAL_BARS_OPTIONS_URL'], headers: @headers, query: query)
+    #respose.map{|d| {date_time: d["t"], value: d["c"]}}
   end
 
   def self.calculate_signals data, options={}
     opts = options.with_indifferent_access
     period = opts[:period] || 30
-    rsi_values = TechnicalAnalysis::Rsi.calculate(data, period: 30)
-    rsi_values.map{|v| v.rsi}
+    rsi_values = TechnicalAnalysis::Rsi.calculate(data, period: period)
+    rsi_values.map{|v| v.rsi.to_f}
   end
 
   def self.execute_trade options={}
     opts = options.with_indifferent_access
-    data = fetch_options_bars opts
+    data = fetch_bars opts
     signals = calculate_signals(data)
     open_sell_orders = orders(query: {status: :all, side: :sell}).select{|o| !o["filled_at"].present?}
     open_buy_orders = orders(query: {status: :all, side: :buy}).select{|o| !o["filled_at"].present?}
     position = positions.select{|p| p["symbol"].eql? opts[:symbol]}.first&.with_indifferent_access
-    buy_call strike_price: opts[:strike_price] if (signals.first < 50 and position and position[:qty].to_i < 10) or (signals.first < 45 and position and position[:qty].to_i >= 10 and position[:qty].to_i < 20) or (signals.first < 53 and signals.first < signals.second and !position)
+    buy_call opts if (signals.first < 50 and position and position[:qty].to_i < 30) or (signals.first < 45 and position and position[:qty].to_i >= 30 and position[:qty].to_i < 45) or (signals.first < 55 and signals.first < signals.second and !position)
     position = positions.select{|p| p["symbol"].eql? opts[:symbol]}.first&.with_indifferent_access
     position ||= positions.select{|p| p["symbol"].eql? symbol}.first&.with_indifferent_access
     if position
@@ -154,7 +154,7 @@ class AlpacaService
 
   def self.intra_day options={}
     opts = options.with_indifferent_access
-    opts[:qty] ||= 5
+    opts[:qty] ||= 15
     opts[:spread] ||= 10
     opts[:ticker] ||= :TSLA
     opts[:date] ||= Date.today.beginning_of_month + 3.months
@@ -190,31 +190,53 @@ class AlpacaService
   #   sell_call(strike_price: opts[:strike_price], type: :limit, limit: sell_limit, qty: sell_qty) if sell_qty > 0
   # end
 
-  # def self.connect_and_subscribe(symbol)
-  #   EM.run do
-  #     ws = WebSocket::EventMachine::Client.connect(uri(symbol))
+  def self.connect_and_subscribe(symbol)
+    EM.run do
+      ws = WebSocket::EventMachine::Client.connect(uri(symbol))
 
-  #     ws.onopen do
-  #       puts "Connected to WebSocket"
-  #       authenticate(ws)
-  #       subscribe_to_bars(ws, symbol)
-  #     end
+      ws.onopen do
+        puts "Connected to WebSocket"
+        authenticate(ws)
+        subscribe_to_bars(ws, symbol)
+      end
 
-  #     ws.onmessage do |msg, type|
-  #       data = JSON.parse(msg)
-  #       if data['T'] == "b"
-  #         handle_bar_data(data)
-  #       end
-  #     end
+      ws.onmessage do |msg, type|
+        data = JSON.parse(msg)
+        if data['T'] == "b"
+          handle_bar_data(data)
+        end
+      end
 
-  #     ws.onerror do |error|
-  #       puts "Error: #{error}"
-  #     end
+      ws.onerror do |error|
+        puts "Error: #{error}"
+      end
 
-  #     ws.onclose do |code, reason|
-  #       puts "Closed connection: #{reason}"
-  #       EM.stop
-  #     end
-  #   end
-  # end
+      ws.onclose do |code, reason|
+        puts "Closed connection: #{reason}"
+        EM.stop
+      end
+    end
+  end
+
+  def self.authenticate(ws)
+    auth_msg = {
+      action: "auth",
+      key_id: APCA_API_KEY,
+      secret_key: APCA_API_SECRET_KEY
+    }
+    ws.send(auth_msg.to_json)
+  end
+
+  def self.subscribe_to_bars(ws, symbol)
+    sub_msg = {
+      action: "subscribe",
+      bars: [symbol]
+    }
+    ws.send(sub_msg.to_json)
+  end
+
+  def self.handle_bar_data(data)
+    puts "Bar Data: #{data}"
+    # Process bar data here
+  end
 end
