@@ -192,8 +192,7 @@ class AlpacaService
         avg = position["avg_entry_price"].to_f
         quotes = latest_option_quote_for(position["symbol"]).with_indifferent_access
         current_price = ((quotes[:quotes][position["symbol"]][:ap] + quotes[:quotes][position["symbol"]][:bp])/2).round(2)
-        qty = ((position["qty"] * 80)/100.0).ceil
-        sell_call(symbol: position["symbol"], qty: qty) if current_price > (avg + 0.2)
+        sell_call(symbol: position["symbol"], qty: position["qty"]) if current_price > (avg + 0.2)
       end
     elsif signals.first <= 43
       cq = call_positions.inject(0) { |s, p| s += p["qty"].to_i }
@@ -208,8 +207,7 @@ class AlpacaService
         avg = position["avg_entry_price"].to_f
         quotes = latest_option_quote_for(position["symbol"]).with_indifferent_access
         current_price = ((quotes[:quotes][position["symbol"]][:ap] + quotes[:quotes][position["symbol"]][:bp])/2).round(2)
-        qty = ((position["qty"] * 80)/100.0).ceil
-        sell_call(symbol: position["symbol"], qty: qty) if current_price > (avg + 0.2)
+        sell_call(symbol: position["symbol"], qty: position["qty"]) if current_price > (avg + 0.2)
       end
     end
   end
