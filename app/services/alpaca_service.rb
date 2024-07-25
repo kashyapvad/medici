@@ -8,6 +8,12 @@ class AlpacaService
     'accept' => 'application/json',
   }
 
+  @option_socket_headers = {
+    'apca-api-key-id' => ENV['APCA_API_KEY'],
+    'apca-api-secret-key' => ENV['APCA_API_SECRET_KEY'],
+    'accept' => 'application/msgpack',
+  }
+
   def self.create_order options={}
     opts = options.with_indifferent_access
     body = opts[:body]
@@ -32,6 +38,14 @@ class AlpacaService
     get(ENV['POSITIONS_URL'], headers: @headers)
   end
 
+  def self.latest_quote_for ticker, feed=:sip
+    get(ENV['LATEST_QUOTE_ENDPOINT'], headers: @headers, query: { symbols: ticker, feed: feed })
+  end
+
+  def self.latest_option_quote_for ticker, feed=:opra
+    get(ENV['LATEST_OPTIONS_QUOTE_ENDPOINT'], headers: @headers, query: { symbols: ticker, feed: feed })
+  end
+
   def self.contract_data_for options={}
     opts = options.with_indifferent_access
     query = {
@@ -50,13 +64,13 @@ class AlpacaService
     opts = options.with_indifferent_access
     side = opts[:side]
     type = opts[:type] || :market
-    ticker = opts[:ticker] || :TSLA
+    ticker = opts[:ticker] || :SPY
     qty = opts[:qty] || 5
     limit = opts[:limit]
     strike_price = opts[:strike_price]
-    date = opts[:date] || Date.today.beginning_of_month + 3.months
+    date = opts[:date] || Date.today.beginning_of_month + 1.months
     
-    symbol = contract_data_for(opts).first[:symbol]
+    symbol = contract_data_for(opts).last[:symbol]
     body = JSON.generate({
       symbol: symbol,
       qty: qty,
@@ -69,26 +83,32 @@ class AlpacaService
   end
 
   def self.buy_call options={}
-    opts = options.with_indifferent_access
-    opts[:side] = :buy
-    opts[:options_type] = :call
-    opts[:type] ||= :market
-    opts[:ticker] ||= :TSLA
-    opts[:qty] ||= 5
-    opts[:date] ||= Date.today.beginning_of_month + 3.months
-    opts[:symbol] = contract_data_for(opts).first[:symbol]
+    opts = options.with_indifferent_access.merge(side: :buy, options_type: :call)
     trade_options opts
   end
 
   def self.sell_call options={}
+    opts = options.with_indifferent_access.merge(side: :sell, options_type: :call)
+    trade_options opts
+  end
+
+  def self.buy_put options={}
+    opts = options.with_indifferent_access.merge(side: :buy, options_type: :put)
+    trade_options opts
+  end
+
+  def self.sell_put options={}
+    opts = options.with_indifferent_access.merge(side: :sell, options_type: :put)
+    trade_options opts
+  end
+
+  def self.trade_options options={}
     opts = options.with_indifferent_access
-    opts[:side] = :sell
-    opts[:options_type] = :call
     opts[:type] ||= :market
-    opts[:ticker] ||= :TSLA 
+    opts[:ticker] ||= :SPY
     opts[:qty] ||= 5
-    opts[:date] ||= Date.today.beginning_of_month + 3.months
-    opts[:symbol] = contract_data_for(opts).first[:symbol]
+    opts[:date] ||= Date.today.beginning_of_month + 1.months
+    opts[:symbol] ||= contract_data_for(opts).last[:symbol]
     trade_options opts
   end
 
@@ -96,8 +116,8 @@ class AlpacaService
     opts = options.with_indifferent_access
     opts[:timeframe] ||= '1T'
     opts[:limit] ||= 2000
-    opts[:ticker] ||= :TSLA
-    opts[:date] ||= Date.today.beginning_of_month + 3.months
+    opts[:ticker] ||= :SPY
+    opts[:date] ||= Date.today.beginning_of_month + 1.months
     query = {
       timeframe: opts[:timeframe],
       limit: opts[:limit]
@@ -109,14 +129,14 @@ class AlpacaService
 
   def self.fetch_options_bars options={}
     opts = options.with_indifferent_access
-    opts[:ticker] ||= :TSLA
+    opts[:ticker] ||= :SPY
     opts[:options_type] ||= :call
     opts[:timeframe] ||= '1T'
     opts[:limit] ||= 2000
-    opts[:ticker] ||= :TSLA
-    opts[:date] ||= Date.today.beginning_of_month + 3.months
+    opts[:ticker] ||= :SPY
+    opts[:date] ||= Date.today.beginning_of_month + 1.months
     opts[:start] ||= (Date.today - 1.day).beginning_of_day.rfc3339
-    symbol = contract_data_for(opts).first[:symbol]
+    symbol = contract_data_for(opts).last[:symbol]
     query = {
       symbols: symbol,
       timeframe: opts[:timeframe],
@@ -136,12 +156,12 @@ class AlpacaService
 
   def self.execute_trade options={}
     opts = options.with_indifferent_access
-    data = fetch_bars opts
+    data = fetch_options_bars opts
     signals = calculate_signals(data)
     open_sell_orders = orders(query: {status: :all, side: :sell}).select{|o| !o["filled_at"].present?}
     open_buy_orders = orders(query: {status: :all, side: :buy}).select{|o| !o["filled_at"].present?}
     position = positions.select{|p| p["symbol"].eql? opts[:symbol]}.first&.with_indifferent_access
-    buy_call opts if (signals.first < 50 and position and position[:qty].to_i < 30) or (signals.first < 45 and position and position[:qty].to_i >= 30 and position[:qty].to_i < 45) or (signals.first < 55 and signals.first < signals.second and !position)
+    buy_call opts if (signals.first < 47 and position and position[:qty].to_i < 30) or (signals.first < 38 and position and position[:qty].to_i >= 30 and position[:qty].to_i < 45) or (signals.first < 56 and signals.first < signals.second and !position)
     position = positions.select{|p| p["symbol"].eql? opts[:symbol]}.first&.with_indifferent_access
     position ||= positions.select{|p| p["symbol"].eql? symbol}.first&.with_indifferent_access
     if position
@@ -152,16 +172,59 @@ class AlpacaService
     end
   end
 
+  def self.stradle options={}
+    opts = options.with_indifferent_access
+    data = fetch_bars opts
+    signals = calculate_signals(data)
+    call_positions = positions.select{|p| p["type"].eql? "call"}
+    put_positions = positions.select{|p| p["type"].eql? "put"}
+    position ||= positions.select{|p| p["symbol"].eql? symbol}.first&.with_indifferent_access
+    if signals.first >= 56
+      pq = call_positions.inject(0) {|s, p| s += p["qty"].to_i}
+      if pq.eql? 0
+        buy_put opts
+      elsif pq > 0 and pq < 30 and signals.first >= 61
+        buy_put opts
+      elsif pq > 0 and pq < 45 and signals.first >= 66
+        buy_put opts
+      end
+      call_positions.each do |position|
+        avg = position["avg_entry_price"].to_f
+        quotes = latest_option_quote_for position["symbol"]
+        current_price = ((quotes[:quotes][position["symbol"]][:ap] + quotes[:quotes][opts[:ticker]][:bp])/2).round
+        sell_call(symbol: position["symbol"], qty: position["qty"]) if sell_qty > 0 and current_price > (avg + 0.2)
+      end
+    elsif signal.first <= 43
+      cq = call_positions.inject(0) { |s, p| s += p["qty"].to_i }
+      if cq.eql? 0
+        buy_call opts
+      elsif cq > 0 and cq < 30 and signals.first >= 38
+        buy_call opts
+      elsif cq > 0 and cq < 45 and signals.first >= 30
+        buy_call opts
+      end
+      put_positions.each do |position|
+        avg = position["avg_entry_price"].to_f
+        quotes = latest_option_quote_for position["symbol"]
+        current_price = ((quotes[:quotes][position["symbol"]][:ap] + quotes[:quotes][opts[:ticker]][:bp])/2).round
+        sell_call(symbol: position["symbol"], qty: position["qty"]) if sell_qty > 0 and current_price > (avg + 0.2)
+      end
+    end
+  end
+
   def self.intra_day options={}
     opts = options.with_indifferent_access
-    opts[:qty] ||= 15
-    opts[:spread] ||= 10
-    opts[:ticker] ||= :TSLA
-    opts[:date] ||= Date.today.beginning_of_month + 3.months
-    opts[:options_type] ||= :call
-    symbol = contract_data_for(opts).first[:symbol]
-    opts[:symbol] = symbol
-    execute_trade opts
+    opts[:qty] ||= 16
+    opts[:diff] ||= 21
+    opts[:ticker] ||= :SPY
+    opts[:date] ||= Date.today.beginning_of_month + 1.months
+    quotes = AlpacaService.latest_quote_for(opts[:ticker]).with_indifferent_access
+    opts[:latest_quote] = ((quotes[:quotes][:SPY][:ap] + quotes[:quotes][opts[:ticker]][:bp])/2).round
+    put_strike_price = opts[:latest_quote] - opts[:diff]
+    call_strike_price = opts[:latest_quote] + opts[:diff]
+    opts[:put_symbol] = contract_data_for(opts.merge(strike_price: put_strike_price, options_type: :put)).last[:symbol]
+    opts[:call_symbol] = contract_data_for(opts.merge(strike_price: call_strike_price, options_type: :call)).last[:symbol]
+    stradle opts
   end
 
     # def self.init options={}
