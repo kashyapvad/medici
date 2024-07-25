@@ -12,6 +12,6 @@ class IntradayWorker
 
   def perform options={}
     AlpacaService.intra_day options
-    IntradayWorker.fire_in 120.seconds, options
+    IntradayWorker.fire_in 60.seconds, options
   end
 end
