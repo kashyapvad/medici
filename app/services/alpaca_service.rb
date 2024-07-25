@@ -60,7 +60,7 @@ class AlpacaService
     option_contracts(query: query)
   end
   
-  def self.trade_options options={}
+  def self.create_options_order options={}
     opts = options.with_indifferent_access
     side = opts[:side]
     type = opts[:type] || :market
@@ -69,10 +69,8 @@ class AlpacaService
     limit = opts[:limit]
     strike_price = opts[:strike_price]
     date = opts[:date] || Date.today.beginning_of_month + 1.months
-    
-    symbol = contract_data_for(opts).last[:symbol]
     body = JSON.generate({
-      symbol: symbol,
+      symbol: opts[:symbol],
       qty: qty,
       side: side,
       type: type,
@@ -84,21 +82,25 @@ class AlpacaService
 
   def self.buy_call options={}
     opts = options.with_indifferent_access.merge(side: :buy, options_type: :call)
+    opts[:symbol] ||= opts[:call_symbol]
     trade_options opts
   end
 
   def self.sell_call options={}
     opts = options.with_indifferent_access.merge(side: :sell, options_type: :call)
+    opts[:symbol] ||= opts[:call_symbol]
     trade_options opts
   end
 
   def self.buy_put options={}
     opts = options.with_indifferent_access.merge(side: :buy, options_type: :put)
+    opts[:symbol] ||= opts[:put_symbol]
     trade_options opts
   end
 
   def self.sell_put options={}
     opts = options.with_indifferent_access.merge(side: :sell, options_type: :put)
+    opts[:symbol] ||= opts[:put_symbol]
     trade_options opts
   end
 
@@ -109,7 +111,7 @@ class AlpacaService
     opts[:qty] ||= 5
     opts[:date] ||= Date.today.beginning_of_month + 1.months
     opts[:symbol] ||= contract_data_for(opts).last[:symbol]
-    trade_options opts
+    create_options_order opts
   end
 
   def self.fetch_bars options={}
@@ -136,9 +138,8 @@ class AlpacaService
     opts[:ticker] ||= :SPY
     opts[:date] ||= Date.today.beginning_of_month + 1.months
     opts[:start] ||= (Date.today - 1.day).beginning_of_day.rfc3339
-    symbol = contract_data_for(opts).last[:symbol]
     query = {
-      symbols: symbol,
+      symbols: opts[:symbol],
       timeframe: opts[:timeframe],
       limit: opts[:limit],
       start: opts[:start]
@@ -174,40 +175,41 @@ class AlpacaService
 
   def self.stradle options={}
     opts = options.with_indifferent_access
-    data = fetch_options_bars opts
+    data = fetch_bars opts
     signals = calculate_signals(data)
-    call_positions = positions.select{|p| p["type"].eql? "call"}
-    put_positions = positions.select{|p| p["type"].eql? "put"}
-    position ||= positions.select{|p| p["symbol"].eql? symbol}.first&.with_indifferent_access
+    call_positions = positions.select{|p| p["symbol"].include? "0C00"}
+    put_positions = positions.select{|p| p["symbol"].include? "0P00"}
     if signals.first >= 56
-      pq = call_positions.inject(0) {|s, p| s += p["qty"].to_i}
+      pq = put_positions.inject(0) {|s, p| s += p["qty"].to_i}
       if pq.eql? 0
         buy_put opts
-      elsif pq > 0 and pq < 30 and signals.first >= 61
+      elsif pq > 0 and pq < 32 and signals.first >= 65 and !put_positions.select{|p| p["symbol"].eql? opts[:put_symbol]}.first.present?
         buy_put opts
-      elsif pq > 0 and pq < 45 and signals.first >= 66
+      elsif pq > 0 and pq < 48 and signals.first >= 74 and !put_positions.select{|p| p["symbol"].eql? opts[:put_symbol]}.first.present?
         buy_put opts
       end
       call_positions.each do |position|
         avg = position["avg_entry_price"].to_f
-        quotes = latest_option_quote_for position["symbol"]
-        current_price = ((quotes[:quotes][position["symbol"]][:ap] + quotes[:quotes][opts[:ticker]][:bp])/2).round
-        sell_call(symbol: position["symbol"], qty: position["qty"]) if sell_qty > 0 and current_price > (avg + 0.2)
+        quotes = latest_option_quote_for(position["symbol"]).with_indifferent_access
+        current_price = ((quotes[:quotes][position["symbol"]][:ap] + quotes[:quotes][position["symbol"]][:bp])/2).round(2)
+        qty = ((position["qty"] * 80)/100.0).ceil
+        sell_call(symbol: position["symbol"], qty: qty) if current_price > (avg + 0.2)
       end
-    elsif signal.first <= 43
+    elsif signals.first <= 43
       cq = call_positions.inject(0) { |s, p| s += p["qty"].to_i }
       if cq.eql? 0
         buy_call opts
-      elsif cq > 0 and cq < 30 and signals.first >= 38
+      elsif cq > 0 and cq < 30 and signals.first <= 34 and !call_positions.select{|p| p["symbol"].eql? opts[:call_symbol]}.first.present?
         buy_call opts
-      elsif cq > 0 and cq < 45 and signals.first >= 30
+      elsif cq > 0 and cq < 45 and signals.first <= 25 and !call_positions.select{|p| p["symbol"].eql? opts[:call_symbol]}.first.present?
         buy_call opts
       end
       put_positions.each do |position|
         avg = position["avg_entry_price"].to_f
-        quotes = latest_option_quote_for position["symbol"]
-        current_price = ((quotes[:quotes][position["symbol"]][:ap] + quotes[:quotes][opts[:ticker]][:bp])/2).round
-        sell_call(symbol: position["symbol"], qty: position["qty"]) if sell_qty > 0 and current_price > (avg + 0.2)
+        quotes = latest_option_quote_for(position["symbol"]).with_indifferent_access
+        current_price = ((quotes[:quotes][position["symbol"]][:ap] + quotes[:quotes][position["symbol"]][:bp])/2).round(2)
+        qty = ((position["qty"] * 80)/100.0).ceil
+        sell_call(symbol: position["symbol"], qty: qty) if current_price > (avg + 0.2)
       end
     end
   end
@@ -218,7 +220,7 @@ class AlpacaService
     opts[:diff] ||= 21
     opts[:ticker] ||= :SPY
     opts[:date] ||= Date.today.beginning_of_month + 1.months
-    quotes = AlpacaService.latest_quote_for(opts[:ticker]).with_indifferent_access
+    quotes = latest_quote_for(opts[:ticker]).with_indifferent_access
     opts[:latest_quote] = ((quotes[:quotes][:SPY][:ap] + quotes[:quotes][opts[:ticker]][:bp])/2).round
     put_strike_price = opts[:latest_quote] - opts[:diff]
     call_strike_price = opts[:latest_quote] + opts[:diff]
