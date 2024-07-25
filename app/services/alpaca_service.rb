@@ -174,7 +174,7 @@ class AlpacaService
 
   def self.stradle options={}
     opts = options.with_indifferent_access
-    data = fetch_bars opts
+    data = fetch_options_bars opts
     signals = calculate_signals(data)
     call_positions = positions.select{|p| p["type"].eql? "call"}
     put_positions = positions.select{|p| p["type"].eql? "put"}
