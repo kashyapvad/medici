@@ -129,10 +129,10 @@ class AlpacaService
   def self.fetch_options_bars options={}
     opts = options.with_indifferent_access
     opts[:options_type] ||= :call
-    opts[:timeframe] ||= '1T'
+    opts[:timeframe] ||= '5T'
     opts[:limit] ||= 2000
     opts[:date] ||= Date.today.beginning_of_month + 1.months
-    opts[:start] ||= (Date.today - 1.day).beginning_of_day.rfc3339
+    opts[:start] ||= (Date.today - 7.day).beginning_of_day.rfc3339
     query = {
       symbols: opts[:symbol],
       timeframe: opts[:timeframe],
@@ -169,6 +169,45 @@ class AlpacaService
   end
 
   def self.stradle options={}
+    opts = options.with_indifferent_access
+    data = fetch_bars opts
+    signals = calculate_signals(data)
+    call_positions = positions.select{|p| p["symbol"].include? "0C00"}
+    put_positions = positions.select{|p| p["symbol"].include? "0P00"}
+    if signals.first >= 56
+      pq = put_positions.inject(0) {|s, p| s += p["qty"].to_i}
+      call_positions.each do |position|
+        avg = position["avg_entry_price"].to_f
+        quotes = latest_option_quote_for(position["symbol"]).with_indifferent_access
+        current_price = ((quotes[:quotes][position["symbol"]][:ap] + quotes[:quotes][position["symbol"]][:bp])/2).round(2)
+        sell_call(symbol: position["symbol"], qty: position["qty"]) if current_price > (avg + 0.2)
+      end
+      if pq.eql? 0
+        buy_put opts
+      elsif pq > 0 and pq < (opts[:qty] * 2) and signals.first >= 65 and !put_positions.select{|p| p["symbol"].eql? opts[:put_symbol]}.first.present?
+        buy_put opts
+      elsif pq > 0 and pq < (opts[:qty] * 3) and signals.first >= 74 and !put_positions.select{|p| p["symbol"].eql? opts[:put_symbol]}.first.present?
+        buy_put opts
+      end
+    elsif signals.first <= 43
+      cq = call_positions.inject(0) { |s, p| s += p["qty"].to_i }
+      put_positions.each do |position|
+        avg = position["avg_entry_price"].to_f
+        quotes = latest_option_quote_for(position["symbol"]).with_indifferent_access
+        current_price = ((quotes[:quotes][position["symbol"]][:ap] + quotes[:quotes][position["symbol"]][:bp])/2).round(2)
+        sell_call(symbol: position["symbol"], qty: position["qty"]) if current_price > (avg + 0.2)
+      end
+      if cq.eql? 0
+        buy_call opts
+      elsif cq > 0 and cq < (opts[:qty] * 2) and signals.first <= 34 and !call_positions.select{|p| p["symbol"].eql? opts[:call_symbol]}.first.present?
+        buy_call opts
+      elsif cq > 0 and cq < (opts[:qty] * 3) and signals.first <= 25 and !call_positions.select{|p| p["symbol"].eql? opts[:call_symbol]}.first.present?
+        buy_call opts
+      end
+    end
+  end
+
+  def self.stradle_intra_day options={}
     opts = options.with_indifferent_access
     data = fetch_bars opts
     signals = calculate_signals(data)
