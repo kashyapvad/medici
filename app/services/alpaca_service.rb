@@ -52,7 +52,7 @@ class AlpacaService
       underlying_symbols: opts[:ticker],
       status: "active",
       expiration_date_gte: opts[:date].beginning_of_month.strftime('%Y-%m-%d'),
-      expiration_date_lte: opts[:date].end_of_month.strftime('%Y-%m-%d'),
+      expiration_date_lte: opts[:date].end_of_day.strftime('%Y-%m-%d'),
       strike_price_gte: opts[:strike_price],
       strike_price_lte: opts[:strike_price],
       type: opts[:options_type]
