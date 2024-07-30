@@ -114,7 +114,7 @@ class AlpacaService
 
   def self.fetch_bars options={}
     opts = options.with_indifferent_access
-    opts[:timeframe] ||= '2T'
+    opts[:timeframe] ||= '1T'
     opts[:limit] ||= 2000
     opts[:start] ||= (Date.today - 7.day).beginning_of_day.rfc3339
     opts[:date] ||= Date.today.beginning_of_month + 1.months
@@ -245,15 +245,17 @@ class AlpacaService
     put_positions = positions.select{|p| p["symbol"].include? "0P00"}
     cq = call_positions.inject(0) {|s, p| s += p["qty"].to_i}
     pq = put_positions.inject(0) { |s, p| s += p["qty"].to_i }
-    buy_call opts if cq.eql? 0 and signals[0] - signals[3] >= 7 and signals[0] <= 56
-    buy_put opts if pq.eql? 0 and signals[3] - signals[0] >= 7 and signals[0] >= 47
+    buy_call opts if cq.eql? 0 and signals[0] - signals[3] >= 7
+    buy_put opts if pq.eql? 0 and signals[3] - signals[0] >= 7
     positions.each do |position|
+      sell_call(symbol: position["symbol"], qty: position["qty"]) if position["symbol"].include? "0C00" and current_price > (avg + 0.25)
+      sell_put(symbol: position["symbol"], qty: position["qty"]) if position["symbol"].include? "0P00" and current_price > (avg + 0.25)
       avg = position["avg_entry_price"].to_f
       if position["symbol"].include? "0C00"
-        qty = (opts[:qty]/2).round if cq <= (opts[:qty] * 3)
+        qty = (opts[:qty]/2).round if cq < (opts[:qty] * 3)
         qty ||= opts[:qty] * 3
       elsif position["symbol"].include? "0P00"
-        qty = (opts[:qty]/2).round if pq <= (opts[:qty] * 3)
+        qty = (opts[:qty]/2).round if pq < (opts[:qty] * 3)
         qty ||= opts[:qty] * 3
       end
       opts[:qty] = qty
@@ -261,10 +263,8 @@ class AlpacaService
       current_price = ((quotes[:quotes][position["symbol"]][:ap] + quotes[:quotes][position["symbol"]][:bp])/2).round(2)
       new_avg = ((avg * position["qty"]) + (current_price * qty))/(position["qty"] + qty)
       averaging_percentage = ((avg - new_avg) * 100.0)/ avg if new_avg < avg
-      buy_call opts if p["symbol"].include? "0C00" and averaging_percentage and averaging_percentage >= 30 and cq <= 60
-      buy_put opts if p["symbol"].include? "0P00" and averaging_percentage and averaging_percentage >= 20 and pq <= 60
-      sell_call(symbol: position["symbol"], qty: position["qty"]) if p["symbol"].include? "0C00" and current_price > (avg + 0.25)
-      sell_put(symbol: position["symbol"], qty: position["qty"]) if p["symbol"].include? "0P00" and current_price > (avg + 0.25)
+      buy_call opts if position["symbol"].include? "0C00" and averaging_percentage and averaging_percentage >= 30 and cq < opts[:qty] * 6
+      buy_put opts if position["symbol"].include? "0P00" and averaging_percentage and averaging_percentage >= 20 and pq < opts[:qty] * 6
     end
   end
 
