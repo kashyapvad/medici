@@ -250,7 +250,7 @@ class AlpacaService
     cq = call_positions.inject(0) {|s, p| s += p["qty"].to_i}
     pq = put_positions.inject(0) { |s, p| s += p["qty"].to_i }
     buy_call opts.merge(qty: opts[:call_qty]) if cq.eql? 0 and signals[0] - signals[3] >= 7 and signals[0] < 83
-    buy_put opts.merge(qty: opts[:pull_qty]) if pq.eql? 0 and signals[3] - signals[0] >= 7 and signals[0] > 21
+    buy_put opts.merge(qty: opts[:put_qty]) if pq.eql? 0 and signals[3] - signals[0] >= 7 and signals[0] > 21
     positions.each do |position|
       sell_qty = (position["qty"].to_f/10).ceil
       quotes = latest_option_quote_for(position["symbol"]).with_indifferent_access
@@ -262,8 +262,8 @@ class AlpacaService
       averaging_percentage = ((avg - new_avg) * 100.0)/avg if new_avg < avg
       sell_call(symbol: position["symbol"], qty: sell_qty) if position["symbol"].include? "0C00" and current_price > (avg + 0.2)
       sell_put(symbol: position["symbol"], qty: sell_qty) if position["symbol"].include? "0P00" and current_price > (avg + 0.25)
-      buy_call opts.merge(qty: qty) if position["symbol"].include? "C00" and averaging_percentage and averaging_percentage >= 11 and cq < opts[:qty] * 6
-      buy_put opts.merge(qty: qty) if position["symbol"].include? "P00" and averaging_percentage and averaging_percentage >= 7 and pq < opts[:qty] * 6
+      buy_call opts.merge(qty: qty) if position["symbol"].include? "C00" and averaging_percentage and averaging_percentage >= 11 and cq < opts[:call_qty] * 6
+      buy_put opts.merge(qty: qty) if position["symbol"].include? "P00" and averaging_percentage and averaging_percentage >= 7 and pq < opts[:put_qty] * 6
     end
   end
 
@@ -271,7 +271,7 @@ class AlpacaService
     equity = portfolio[:equity].last.to_f
     purchasing_power = equity - positions.inject(0) {|s, p| s += p["market_value"].to_f}
     qty = (purchasing_power/price).to_i if full_budget
-    qty ||= (purchasing_power/(5 * price)).to_i
+    qty ||= (purchasing_power/(5 * price)).round
     qty
   end 
 
@@ -299,6 +299,7 @@ class AlpacaService
     call_quote = ((call_option_quotes[:quotes][opts[:call_symbol]][:ap] + call_option_quotes[:quotes][opts[:call_symbol]][:bp])/2.0) * 100
     opts[:put_qty] ||= calc_qty put_quote
     opts[:call_qty] ||= calc_qty call_quote
+    puts opts
     surf_stradle opts
   end
 
