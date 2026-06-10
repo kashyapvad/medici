@@ -8,21 +8,20 @@ strategies during market hours.
 > **Note:** This is a personal research project for experimenting with
 > algorithmic options strategies. It is not production trading infrastructure
 > and is shared to illustrate the engineering — API integration, background
-> workers, and real-time market-data processing — not as financial advice.
+> workers, and market-data processing — not as financial advice.
 
 ## What it does
 
 - **Market data ingestion** — fetches historical and latest price bars for
-  underlyings and options contracts from Alpaca's REST API, plus a WebSocket
-  client for streaming live bars.
+  underlyings and options contracts from Alpaca's REST API.
 - **Signal generation** — computes technical indicators (RSI and a
   support/resistance signal) from price bars via the `technical-analysis` gem.
 - **Strategy execution** — several pluggable strategies decide when to open,
   average into, or close call/put positions:
-  - `stradle_rsi` / `stradle_sr` — RSI- and support/resistance-driven straddles.
-  - `surf_stradle` — momentum-based straddle with cost-averaging and scaled exits.
+  - `straddle_rsi` / `straddle_sr` — RSI- and support/resistance-driven straddles.
+  - `surf_straddle` — momentum-based straddle with cost-averaging and scaled exits.
   - `intra_day` — selects strike prices around the current quote, sizes orders
-    against available buying power, and drives `surf_stradle`.
+    against available buying power, and drives `surf_straddle`.
 - **Order management** — builds and submits market/limit options orders,
   tracks open orders and positions, and computes dynamic position sizing from
   portfolio equity and purchasing power.
@@ -38,7 +37,6 @@ Sidekiq worker (IntradayWorker)        # self-rescheduling strategy loop
         ▼
 AlpacaService                          # all market-data + trading logic
    ├── REST (HTTParty) ──► Alpaca API  # bars, quotes, contracts, orders, positions
-   ├── WebSocket client  ─► Alpaca     # streaming bars
    └── technical-analysis gem          # RSI / support-resistance signals
 ```
 
@@ -52,8 +50,7 @@ AlpacaService                          # all market-data + trading logic
 
 - **Ruby** 3.3.3, **Rails** 7.1
 - **Sidekiq** 7.3 (Redis-backed background jobs)
-- **HTTParty** for REST, **websocket-eventmachine-client** for streaming,
-  **msgpack** for Alpaca's binary feed
+- **HTTParty** for REST
 - **alpaca-trade-api** and **technical-analysis** gems
 - **PostgreSQL** (`pg`) / SQLite for local
 - **Docker** (see `Dockerfile`)
